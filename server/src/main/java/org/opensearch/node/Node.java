@@ -39,6 +39,7 @@ import org.opensearch.ExceptionsHelper;
 import org.opensearch.common.SetOnce;
 import org.opensearch.common.settings.SettingsException;
 import org.opensearch.common.unit.ByteSizeUnit;
+import org.opensearch.common.logging.LogLimitingFilter;
 import org.opensearch.common.unit.ByteSizeValue;
 import org.opensearch.common.util.FeatureFlags;
 import org.opensearch.cluster.routing.allocation.AwarenessReplicaBalance;
@@ -598,6 +599,10 @@ public class Node implements Closeable {
                 threadPool,
                 nodeEnvironment
             );
+            LogLimitingFilter logLimitingFilter = new LogLimitingFilter(
+                settings,
+                clusterService.getClusterSettings()
+            );
             final SetOnce<RerouteService> rerouteServiceReference = new SetOnce<>();
             final InternalSnapshotsInfoService snapshotsInfoService = new InternalSnapshotsInfoService(
                 settings,
@@ -1145,6 +1150,7 @@ public class Node implements Closeable {
                 b.bind(SystemIndices.class).toInstance(systemIndices);
                 b.bind(IdentityService.class).toInstance(identityService);
                 b.bind(TracerFactory.class).toInstance(this.tracerFactory);
+                b.bind(LogLimitingFilter.class).toInstance(logLimitingFilter);
             });
             injector = modules.createInjector();
 

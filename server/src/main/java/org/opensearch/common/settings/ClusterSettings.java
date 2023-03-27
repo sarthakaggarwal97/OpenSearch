@@ -35,6 +35,7 @@ import org.apache.logging.log4j.LogManager;
 import org.opensearch.cluster.routing.allocation.AwarenessReplicaBalance;
 import org.opensearch.action.search.CreatePitController;
 import org.opensearch.cluster.routing.allocation.decider.NodeLoadAwareAllocationDecider;
+import org.opensearch.common.logging.LogLimitingFilter;
 import org.opensearch.common.util.FeatureFlags;
 import org.opensearch.index.IndexModule;
 import org.opensearch.index.IndexSettings;
@@ -176,6 +177,51 @@ public final class ClusterSettings extends AbstractScopedSettings {
     public ClusterSettings(final Settings nodeSettings, final Set<Setting<?>> settingsSet, final Set<SettingUpgrader<?>> settingUpgraders) {
         super(nodeSettings, settingsSet, settingUpgraders, Property.NodeScope);
         addSettingsUpdater(new LoggingSettingUpdater(nodeSettings));
+        addSettingsUpdater(new LogLimitingUpdater(nodeSettings));
+    }
+
+    private static final class LogLimitingUpdater implements SettingUpdater<Settings> {
+
+        final Predicate<String> logLimitingPredicate = LogLimitingFilter.LOG_LIMITING_FILTER::match;
+
+        private final Settings settings;
+
+        private LogLimitingUpdater(Settings settings) {
+            this.settings = settings;
+        }
+
+        @Override
+        public boolean hasChanged(Settings current, Settings previous) {
+            return current.filter(logLimitingPredicate).equals(previous.filter(logLimitingPredicate)) == false;
+        }
+
+        @Override
+        public Settings getValue(Settings current, Settings previous) {
+            Settings.Builder builder = Settings.builder();
+            builder.put(current.filter(logLimitingPredicate));
+            for (String key : previous.keySet()) {
+                if (logLimitingPredicate.test(key) && builder.keys().contains(key) == false) {
+                    if (LogLimitingFilter.LOG_LIMITING_FILTER.getConcreteSetting(key).exists(settings) == false) {
+                        builder.putNull(key);
+                    } else {
+                        builder.put(key, LogLimitingFilter.LOG_LIMITING_FILTER.getConcreteSetting(key).get(settings));
+                    }
+                }
+            }
+            return builder.build();
+        }
+
+        @Override
+        public void apply(Settings value, Settings current, Settings previous) {
+            for (String key : value.keySet()) {
+                assert logLimitingPredicate.test(key);
+                String component = key.substring("log_limiting.filter.".length());
+                if (component.isEmpty()) {
+                    continue;
+                }
+                LogLimitingFilter.addComponent(component, value.get(key));
+            }
+        }
     }
 
     private static final class LoggingSettingUpdater implements SettingUpdater<Settings> {
@@ -609,6 +655,11 @@ public final class ClusterSettings extends AbstractScopedSettings {
                 ClusterManagerTaskThrottler.THRESHOLD_SETTINGS,
                 ClusterManagerTaskThrottler.BASE_DELAY_SETTINGS,
                 ClusterManagerTaskThrottler.MAX_DELAY_SETTINGS,
+
+                LogLimitingFilter.LOG_LIMITING_THRESHOLD,
+                LogLimitingFilter.LOG_LIMITING_SIZE,
+                LogLimitingFilter.LOG_LIMITING_FILTER,
+                LogLimitingFilter.LOG_LIMITING_EXPIRY_TIME,
                 // Settings related to search backpressure
                 SearchBackpressureSettings.SETTING_MODE,
 
