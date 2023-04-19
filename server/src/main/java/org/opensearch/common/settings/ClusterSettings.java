@@ -657,9 +657,8 @@ public final class ClusterSettings extends AbstractScopedSettings {
                 ClusterManagerTaskThrottler.MAX_DELAY_SETTINGS,
 
                 LogLimitingFilter.LOG_LIMITING_THRESHOLD,
-                LogLimitingFilter.LOG_LIMITING_SIZE,
                 LogLimitingFilter.LOG_LIMITING_FILTER,
-                LogLimitingFilter.LOG_LIMITING_EXPIRY_TIME,
+                LogLimitingFilter.LOG_LIMITING_LEVEL,
                 // Settings related to search backpressure
                 SearchBackpressureSettings.SETTING_MODE,
 

@@ -85,6 +85,7 @@ public abstract class RestActionListener<Response> implements ActionListener<Res
     @Override
     public final void onFailure(Exception e) {
         try {
+            logger.debug("we are logging the exception", e);
             channel.sendResponse(from(e));
         } catch (Exception inner) {
             inner.addSuppressed(e);

@@ -21,13 +21,14 @@ import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.filter.AbstractFilter;
 import org.apache.logging.log4j.core.util.Throwables;
 import org.apache.logging.log4j.message.Message;
-import org.opensearch.common.Strings;
+import org.opensearch.common.cache.Cache;
+import org.opensearch.common.cache.CacheBuilder;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 
 @Plugin(name = "LogLimitingFilter", category = Node.CATEGORY, elementType = Filter.ELEMENT_TYPE)
 public class LogLimitingFilter extends AbstractFilter {
@@ -38,8 +39,8 @@ public class LogLimitingFilter extends AbstractFilter {
         private static final long EXPIRY_TIME = 60;
         private static final String PREFIX = "log_limiting.filter.";
         private static final String THRESHOLD_KEY = "log_limiting._settings.threshold";
-        private static final String SIZE_KEY = "log_limiting._settings.size";
-        private static final String EXPIRY_TIME_KEY = "log_limiting._settings.expiry_time";
+        private static final String LEVEL_KEY = "log_limiting._settings.level";
+        private static final String LEVEL = Level.DEBUG.name();
 
         private static final String EMPTY_STRING = "";
     }
@@ -56,80 +57,70 @@ public class LogLimitingFilter extends AbstractFilter {
         Setting.Property.NodeScope,
         Setting.Property.Dynamic
     );
-    public static final Setting<Long> LOG_LIMITING_SIZE = Setting.longSetting(
-        Defaults.SIZE_KEY,
-        Defaults.SIZE,
-        5,
+
+    public static final Setting<String> LOG_LIMITING_LEVEL = Setting.simpleString(
+        Defaults.LEVEL_KEY,
+        Defaults.LEVEL,
         Setting.Property.NodeScope,
         Setting.Property.Dynamic
     );
 
-    public static final Setting<Long> LOG_LIMITING_EXPIRY_TIME = Setting.longSetting(
-        Defaults.EXPIRY_TIME_KEY,
-        Defaults.EXPIRY_TIME,
-        5,
-        Setting.Property.NodeScope,
-        Setting.Property.Dynamic
-    );
+    private static final Cache<String, Long> exceptionFrequencyCache = CacheBuilder.<String, Long>builder()
+        .setMaximumWeight(Defaults.SIZE)
+        .setExpireAfterAccess(TimeValue.timeValueMinutes(Defaults.EXPIRY_TIME)).build();
+    private static final Cache<String, Boolean> componentSettingsCache = CacheBuilder.<String, Boolean>builder()
+        .setMaximumWeight(Defaults.SIZE)
+        .setExpireAfterAccess(TimeValue.timeValueMinutes(Defaults.EXPIRY_TIME)).build();
 
-    private final Map<String, Long> exceptionFrequencyCache = new ConcurrentHashMap<String, Long>();
-    private static final Map<String, Boolean> componentSettingsCache = new ConcurrentHashMap<String, Boolean>();
-    private Long frequencyThreshold;
-    private Long size;
-    private final Level level;
-    private final long timestamp;
-    private long expiryTime;
+    private static Long frequencyThreshold;
+    private static Level level;
 
     public LogLimitingFilter(Settings settings, ClusterSettings clusterSettings) {
         this(Level.DEBUG, Result.ACCEPT, Result.DENY);
-        this.frequencyThreshold = LOG_LIMITING_THRESHOLD.get(settings);
-        this.size = LOG_LIMITING_SIZE.get(settings);
+        frequencyThreshold = LOG_LIMITING_THRESHOLD.get(settings);
+        level = Level.valueOf(LOG_LIMITING_LEVEL.get(settings));
         clusterSettings.addSettingsUpdateConsumer(LOG_LIMITING_THRESHOLD, this::setFrequencyThreshold);
-        clusterSettings.addSettingsUpdateConsumer(LOG_LIMITING_SIZE, this::setSize);
-        clusterSettings.addSettingsUpdateConsumer(LOG_LIMITING_EXPIRY_TIME, this::setExpiryTime);
+        clusterSettings.addSettingsUpdateConsumer(LOG_LIMITING_LEVEL, this::setLogLimitingLevel);
     }
 
     public LogLimitingFilter(Level level, Result onMatch, Result onMismatch) {
         super(onMatch, onMismatch);
-        this.level = level;
-        this.timestamp = System.currentTimeMillis();
+        LogLimitingFilter.level = level;
     }
 
-    public void reset() {
-        this.exceptionFrequencyCache.clear();
-    }
+    public Result filter(Level level, Throwable throwable, String loggerName) throws ExecutionException {
 
-    public Result filter(Level level, Throwable throwable, String loggerName) {
-
-        if (null == throwable || !level.isLessSpecificThan(this.level) || !validateLogLimiterClassSetting(loggerName)) {
+        if (null == throwable || !level.isLessSpecificThan(LogLimitingFilter.level) || !validateLogLimiterClassSetting(loggerName)) {
             return Result.NEUTRAL;
         }
 
-        validateCache();
-
         String exceptionKey = createExceptionKey(throwable);
-        Long currentFrequency = exceptionFrequencyCache.getOrDefault(exceptionKey, 0L);
-
-        if (currentFrequency % frequencyThreshold == 1) {
-            return Result.ACCEPT;
-        }
+        Long currentFrequency = exceptionFrequencyCache.computeIfAbsent(exceptionKey, key -> 0L);
 
         exceptionFrequencyCache.put(exceptionKey, currentFrequency + 1);
+
+        if (currentFrequency % frequencyThreshold == 0) {
+            return Result.ACCEPT;
+        }
         return Result.DENY;
     }
 
-    private boolean validateLogLimiterClassSetting(String loggerName) {
+    private boolean validateLogLimiterClassSetting(String loggerName) throws ExecutionException {
 
         String componentSubpart = Defaults.EMPTY_STRING;
         int componentIndex = 0;
-        while (!componentSubpart.equals(loggerName)){
+        while (!componentSubpart.equals(loggerName)) {
             componentIndex = loggerName.indexOf(".", componentIndex);
-            componentSubpart = loggerName.substring(0, componentIndex + 1);
-            if (componentSettingsCache.containsKey(componentSubpart)){
+            if (componentIndex == -1) {
+                break;
+            }
+            componentSubpart = loggerName.substring(0, componentIndex);
+            componentIndex = componentIndex + 1;
+            if (componentSettingsCache.get(componentSubpart) != null) {
                 return componentSettingsCache.get(componentSubpart);
             }
         }
-        return componentSettingsCache.getOrDefault(loggerName, false);
+        return componentSettingsCache.computeIfAbsent(loggerName, key -> false);
     }
 
     private String createExceptionKey(Throwable throwable) {
@@ -137,15 +128,22 @@ public class LogLimitingFilter extends AbstractFilter {
         return rootCause.getClass().getSimpleName();
     }
 
-
     @Override
     public Result filter(LogEvent event) {
-        return filter(event.getLevel(), event.getThrown(), event.getLoggerName());
+        try {
+            return filter(event.getLevel(), event.getThrown(), event.getLoggerName());
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, Message msg, Throwable t) {
-        return filter(level, t, logger.getContext().getName());
+        try {
+            return filter(level, t, logger.getContext().getName());
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @PluginFactory
@@ -157,16 +155,8 @@ public class LogLimitingFilter extends AbstractFilter {
         return new LogLimitingFilter(level, match, mismatch);
     }
 
-    public void setSize(Long size) {
-        this.size = size;
-    }
-
     public void setFrequencyThreshold(Long frequencyThreshold) {
-        this.frequencyThreshold = frequencyThreshold;
-    }
-
-    public void setExpiryTime(long expiryTime) {
-        this.expiryTime = expiryTime;
+        LogLimitingFilter.frequencyThreshold = frequencyThreshold;
     }
 
     public static void addComponent(String component, String value) {
@@ -174,13 +164,8 @@ public class LogLimitingFilter extends AbstractFilter {
         componentSettingsCache.put(component, enable);
     }
 
-    private void validateCache() {
-
-        long duration = System.currentTimeMillis() - this.timestamp;
-        long elapsedTime = duration / 1000 / 60;
-        if (elapsedTime >= expiryTime || exceptionFrequencyCache.size() >= size) {
-            this.reset();
-        }
+    private void setLogLimitingLevel(String level) {
+        LogLimitingFilter.level = Level.getLevel(level);
     }
 
 }
