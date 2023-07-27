@@ -267,7 +267,13 @@ public class IndexingIT extends AbstractRollingTestCase {
                     .put(IndexMetadata.SETTING_REPLICATION_TYPE, ReplicationType.SEGMENT)
                     .put(
                         EngineConfig.INDEX_CODEC_SETTING.getKey(),
-                        randomFrom(CodecService.DEFAULT_CODEC, CodecService.BEST_COMPRESSION_CODEC, CodecService.LUCENE_DEFAULT_CODEC)
+                        randomFrom(
+                            CodecService.DEFAULT_CODEC,
+                            CodecService.BEST_COMPRESSION_CODEC,
+                            CodecService.LUCENE_DEFAULT_CODEC,
+                            CodecService.ZSTD_CODEC,
+                            CodecService.ZSTD_NO_DICT_CODEC
+                        )
                     )
                     .put(INDEX_DELAYED_NODE_LEFT_TIMEOUT_SETTING.getKey(), "100ms");
                 createIndex(indexName, settings.build());

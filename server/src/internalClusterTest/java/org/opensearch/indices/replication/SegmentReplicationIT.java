@@ -203,7 +203,13 @@ public class SegmentReplicationIT extends SegmentReplicationBaseIT {
             .put(indexSettings())
             .put(
                 EngineConfig.INDEX_CODEC_SETTING.getKey(),
-                randomFrom(CodecService.DEFAULT_CODEC, CodecService.BEST_COMPRESSION_CODEC, CodecService.LUCENE_DEFAULT_CODEC)
+                randomFrom(
+                    CodecService.DEFAULT_CODEC,
+                    CodecService.BEST_COMPRESSION_CODEC,
+                    CodecService.LUCENE_DEFAULT_CODEC,
+                    CodecService.ZSTD_CODEC,
+                    CodecService.ZSTD_NO_DICT_CODEC
+                )
             )
             .build();
         createIndex(INDEX_NAME, settings);
