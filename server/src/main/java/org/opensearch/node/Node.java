@@ -34,6 +34,7 @@ package org.opensearch.node;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.Filter;
 import org.apache.lucene.util.Constants;
 import org.opensearch.ExceptionsHelper;
 import org.opensearch.common.SetOnce;
@@ -599,10 +600,7 @@ public class Node implements Closeable {
                 threadPool,
                 nodeEnvironment
             );
-            LogLimitingFilter logLimitingFilter = new LogLimitingFilter(
-                settings,
-                clusterService.getClusterSettings()
-            );
+            LogLimitingFilter logLimitingFilter = new LogLimitingFilter(Filter.Result.ACCEPT, Filter.Result.DENY);
             final SetOnce<RerouteService> rerouteServiceReference = new SetOnce<>();
             final InternalSnapshotsInfoService snapshotsInfoService = new InternalSnapshotsInfoService(
                 settings,

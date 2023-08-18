@@ -6,12 +6,6 @@
  * compatible open source license.
  */
 
-/**
- * Filter to limit occurrences of error/exception logs based on their type
- *
- * @opensearch.internal
- */
-
 package org.opensearch.common.logging;
 
 import org.apache.logging.log4j.Level;
@@ -26,71 +20,82 @@ import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.filter.AbstractFilter;
 import org.apache.logging.log4j.core.util.Throwables;
 import org.apache.logging.log4j.message.Message;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.common.cache.Cache;
 import org.opensearch.common.cache.CacheBuilder;
-import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
-import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
+import org.opensearch.rest.RestStatus;
 
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 
+/**
+ * Filter to limit occurrences of error/exception logs based on their type
+ *
+ * @opensearch.internal
+ */
 @Plugin(name = "LogLimitingFilter", category = Node.CATEGORY, elementType = Filter.ELEMENT_TYPE)
 public class LogLimitingFilter extends AbstractFilter {
 
     private static class Defaults {
         private static final long THRESHOLD = 5;
         private static final long CACHE_SIZE = 128;
-        private static final String PREFIX = "log_limiting.filter.";
-        private static final String THRESHOLD_KEY = "log_limiting._settings.threshold";
-        private static final String LEVEL_KEY = "log_limiting._settings.level";
+        private static final long EXPIRY_TIME = 120;
+        private static final Level LEVEL = Level.DEBUG;
     }
 
-    public static final Setting.AffixSetting<Boolean> LOG_LIMITING_FILTER = Setting.prefixKeySetting(
-        Defaults.PREFIX,
-        (key) -> Setting.boolSetting(key, false, Setting.Property.Dynamic, Setting.Property.NodeScope)
-    );
+    private static class ModuleSettings {
+        public Level level;
+        public Long threshold;
+        ModuleSettings(Level level, Long threshold) {
+            this.level = level;
+            this.threshold = threshold;
+        }
+    }
 
-    public static final Setting<Long> LOG_LIMITING_THRESHOLD = Setting.longSetting(
-        Defaults.THRESHOLD_KEY,
-        Defaults.THRESHOLD,
-        5,
-        Setting.Property.NodeScope,
-        Setting.Property.Dynamic
-    );
+    public static final String LOG_LIMITING_FILTER_PREFIX = "log_limiting.filter.";
+    public static final String LOG_LIMITING_THRESHOLD_PREFIX = "log_limiting._settings.threshold.";
+    public static final String LOG_LIMITING_LEVEL_PREFIX = "log_limiting._settings.level.";
 
-    public static final Setting<Level> LOG_LIMITING_LEVEL = new Setting<>(
-        Defaults.LEVEL_KEY,
-        Level.DEBUG.name(),
-        Level::valueOf,
-        Setting.Property.NodeScope,
-        Setting.Property.Dynamic
+    public enum Entry {
+        NEW_ENTRY,
+        THRESHOLD_MODIFICATION,
+        LEVEL_MODIFICATION
+    }
+
+    public static final Setting<Boolean> LOG_LIMITING_FILTER =
+        Setting.prefixKeySetting(
+            LOG_LIMITING_FILTER_PREFIX,
+            (key) -> Setting.boolSetting(key, false, Setting.Property.Dynamic, Setting.Property.NodeScope)
+        );
+
+    public static final Setting<Long> LOG_LIMITING_THRESHOLD =
+        Setting.prefixKeySetting(
+            LOG_LIMITING_THRESHOLD_PREFIX,
+            (key) -> Setting.longSetting(key, Defaults.THRESHOLD, 5, Setting.Property.Dynamic, Setting.Property.NodeScope)
+        );
+
+    public static final Setting<Level> LOG_LIMITING_LEVEL =
+        Setting.prefixKeySetting(
+            LOG_LIMITING_LEVEL_PREFIX,
+            (key) -> new Setting<>(key, Level.DEBUG.name(), Level::valueOf, Setting.Property.Dynamic, Setting.Property.NodeScope)
         );
 
     private static final Cache<String, Long> exceptionFrequencyCache = CacheBuilder.<String, Long>builder()
+        .setMaximumWeight(Defaults.CACHE_SIZE)
+        .setExpireAfterAccess(TimeValue.timeValueMinutes(Defaults.EXPIRY_TIME)).build();
+    private static final Cache<String, ModuleSettings> componentSettingsCache = CacheBuilder.<String, ModuleSettings>builder()
         .setMaximumWeight(Defaults.CACHE_SIZE).build();
-    private static final Cache<String, Boolean> componentSettingsCache = CacheBuilder.<String, Boolean>builder()
-        .setMaximumWeight(Defaults.CACHE_SIZE).build();
 
-    private static Long frequencyThreshold;
-    private static Level level;
-
-    public LogLimitingFilter(Settings settings, ClusterSettings clusterSettings) {
-        this(Level.DEBUG, Result.ACCEPT, Result.DENY);
-        frequencyThreshold = LOG_LIMITING_THRESHOLD.get(settings);
-        level = LOG_LIMITING_LEVEL.get(settings);
-        clusterSettings.addSettingsUpdateConsumer(LOG_LIMITING_THRESHOLD, this::setFrequencyThreshold);
-        clusterSettings.addSettingsUpdateConsumer(LOG_LIMITING_LEVEL, this::setLogLimitingLevel);
-    }
-
-    public LogLimitingFilter(Level level, Result onMatch, Result onMismatch) {
+    public LogLimitingFilter(Result onMatch, Result onMismatch) {
         super(onMatch, onMismatch);
-        LogLimitingFilter.level = level;
     }
 
     public Result filter(Level level, Throwable throwable, String loggerName) throws ExecutionException {
+        ModuleSettings moduleSettings = getModuleSettings(loggerName);
 
-        if (null == throwable || !level.isLessSpecificThan(LogLimitingFilter.level) || !validateLogLimiterClassSetting(loggerName)) {
+        if (null == throwable || null==moduleSettings || !level.isLessSpecificThan(moduleSettings.level)) {
             return Result.NEUTRAL;
         }
 
@@ -99,33 +104,32 @@ public class LogLimitingFilter extends AbstractFilter {
 
         exceptionFrequencyCache.put(exceptionKey, currentFrequency + 1);
 
-        if (currentFrequency % frequencyThreshold == 0) {
+        if (currentFrequency % moduleSettings.threshold == 0) {
             return Result.ACCEPT;
         }
         return Result.DENY;
     }
 
-    private boolean validateLogLimiterClassSetting(String loggerName) throws ExecutionException {
-
-        String componentSubpart = "";
-        int componentIndex = 0;
-        while (!componentSubpart.equals(loggerName)) {
-            componentIndex = loggerName.indexOf(".", componentIndex);
-            if (componentIndex == -1) {
-                break;
-            }
-            componentSubpart = loggerName.substring(0, componentIndex);
-            componentIndex = componentIndex + 1;
+    private ModuleSettings getModuleSettings(String loggerName) {
+        int componentIndex = loggerName.length();
+        Cache<String, ModuleSettings> s = componentSettingsCache;
+        while (componentIndex > 0) {
+            String componentSubpart = loggerName.substring(0, componentIndex);
             if (componentSettingsCache.get(componentSubpart) != null) {
                 return componentSettingsCache.get(componentSubpart);
             }
+            componentIndex = loggerName.lastIndexOf('.', componentIndex - 1);
         }
-        return componentSettingsCache.computeIfAbsent(loggerName, key -> false);
+        return null;
     }
 
     private String createExceptionKey(Throwable throwable) {
+        RestStatus status = ExceptionsHelper.status(throwable);
+        int st = status.getStatus();
         Throwable rootCause = Throwables.getRootCause(throwable);
-        return rootCause.getClass().getSimpleName();
+        Class<? extends Throwable> cl = rootCause.getClass();
+        String s = cl.getSimpleName();
+        return s;
     }
 
     @Override
@@ -148,28 +152,34 @@ public class LogLimitingFilter extends AbstractFilter {
 
     @PluginFactory
     public static LogLimitingFilter createFilter(
-        @PluginAttribute(value = "level", defaultString = "DEBUG") Level level,
         @PluginAttribute(value = "onMatch") final Result match,
         @PluginAttribute(value = "onMismatch") final Result mismatch
     ) {
-        return new LogLimitingFilter(level, match, mismatch);
+        return new LogLimitingFilter(match, mismatch);
     }
 
-    public void setFrequencyThreshold(Long frequencyThreshold) {
-        LogLimitingFilter.frequencyThreshold = frequencyThreshold;
-    }
+    public static void addComponent(String component, String value, Entry task) {
+        switch(task) {
+            case NEW_ENTRY:
+                if (Objects.isNull(value) || Boolean.valueOf(value)==false) {
+                    componentSettingsCache.invalidate(component);
+                } else {
+                    componentSettingsCache.put(component, new ModuleSettings(Defaults.LEVEL, Defaults.THRESHOLD));
+                }
+                break;
 
-    public static void addComponent(String component, String value) {
-        if (Objects.isNull(value)) {
-            componentSettingsCache.invalidate(component);
-        } else {
-            final Boolean enable = Boolean.valueOf(value);
-            componentSettingsCache.put(component, enable);
+            case LEVEL_MODIFICATION:
+                if (componentSettingsCache.get(component) != null) {
+                    componentSettingsCache.put(component, new ModuleSettings(Level.getLevel(value), componentSettingsCache.get(component).threshold));
+                }
+                break;
+
+            case THRESHOLD_MODIFICATION:
+                if (componentSettingsCache.get(component) != null) {
+                    componentSettingsCache.put(component, new ModuleSettings(componentSettingsCache.get(component).level, Long.parseLong(value)));
+                }
+                break;
         }
-    }
-
-    private void setLogLimitingLevel(Level level) {
-        LogLimitingFilter.level = level;
     }
 
 }

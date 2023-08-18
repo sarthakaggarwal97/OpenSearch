@@ -183,6 +183,9 @@ public final class ClusterSettings extends AbstractScopedSettings {
     private static final class LogLimitingUpdater implements SettingUpdater<Settings> {
 
         final Predicate<String> logLimitingPredicate = LogLimitingFilter.LOG_LIMITING_FILTER::match;
+        final Predicate<String> logLimitingLevelPredicate = LogLimitingFilter.LOG_LIMITING_LEVEL::match;
+        final Predicate<String> logLimitingThresholdPredicate = LogLimitingFilter.LOG_LIMITING_THRESHOLD::match;
+        final Predicate<String> combinedPredicate = logLimitingPredicate.or(logLimitingThresholdPredicate).or(logLimitingLevelPredicate);
 
         private final Settings settings;
 
@@ -192,20 +195,19 @@ public final class ClusterSettings extends AbstractScopedSettings {
 
         @Override
         public boolean hasChanged(Settings current, Settings previous) {
-            return current.filter(logLimitingPredicate).equals(previous.filter(logLimitingPredicate)) == false;
+            return current.filter(combinedPredicate).equals(previous.filter(combinedPredicate)) == false;
         }
 
         @Override
         public Settings getValue(Settings current, Settings previous) {
             Settings.Builder builder = Settings.builder();
-            builder.put(current.filter(logLimitingPredicate));
-            for (String key : previous.keySet()) {
-                if (logLimitingPredicate.test(key) && builder.keys().contains(key) == false) {
-                    if (LogLimitingFilter.LOG_LIMITING_FILTER.getConcreteSetting(key).exists(settings) == false) {
-                        builder.putNull(key);
-                    } else {
-                        builder.put(key, LogLimitingFilter.LOG_LIMITING_FILTER.getConcreteSetting(key).get(settings));
-                    }
+            for (String key : current.filter(combinedPredicate).keySet()) {
+                if (logLimitingPredicate.test(key) && settingsChanged(LogLimitingFilter.LOG_LIMITING_FILTER, current, previous, key)) {
+                    builder.put(key, LogLimitingFilter.LOG_LIMITING_FILTER.getConcreteSetting(key).get(current));
+                } else if (logLimitingThresholdPredicate.test(key) && settingsChanged(LogLimitingFilter.LOG_LIMITING_THRESHOLD, current, previous, key)) {
+                    builder.put(key, LogLimitingFilter.LOG_LIMITING_THRESHOLD.getConcreteSetting(key).get(current));
+                } else if (logLimitingLevelPredicate.test(key) && settingsChanged(LogLimitingFilter.LOG_LIMITING_LEVEL, current, previous, key)) {
+                    builder.put(key, LogLimitingFilter.LOG_LIMITING_LEVEL.getConcreteSetting(key).get(current));
                 }
             }
             return builder.build();
@@ -214,13 +216,31 @@ public final class ClusterSettings extends AbstractScopedSettings {
         @Override
         public void apply(Settings value, Settings current, Settings previous) {
             for (String key : value.keySet()) {
-                assert logLimitingPredicate.test(key);
-                String component = key.substring("log_limiting.filter.".length());
-                if (component.isEmpty()) {
-                    continue;
+                if (logLimitingPredicate.test(key)) {
+                    String component = key.substring(LogLimitingFilter.LOG_LIMITING_FILTER_PREFIX.length());
+                    if (component.isEmpty()) {
+                        continue;
+                    }
+                    LogLimitingFilter.addComponent(component, value.get(key), LogLimitingFilter.Entry.NEW_ENTRY);
+                } else if (logLimitingLevelPredicate.test(key)) {
+                    String component = key.substring(LogLimitingFilter.LOG_LIMITING_LEVEL_PREFIX.length());
+                    if (component.isEmpty()) {
+                        continue;
+                    }
+                    LogLimitingFilter.addComponent(component, value.get(key), LogLimitingFilter.Entry.LEVEL_MODIFICATION);
+
+                } else if (logLimitingThresholdPredicate.test(key)) {
+                    String component = key.substring(LogLimitingFilter.LOG_LIMITING_THRESHOLD_PREFIX.length());
+                    if (component.isEmpty()) {
+                        continue;
+                    }
+                    LogLimitingFilter.addComponent(component, value.get(key), LogLimitingFilter.Entry.THRESHOLD_MODIFICATION);
                 }
-                LogLimitingFilter.addComponent(component, value.get(key));
             }
+        }
+
+        private boolean settingsChanged(Setting<?> setting, Settings current, Settings previous, String key) {
+            return setting.getConcreteSetting(key).get(current) != setting.getConcreteSetting(key).get(previous);
         }
     }
 
