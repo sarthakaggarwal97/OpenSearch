@@ -133,15 +133,18 @@ public final class EngineConfig {
             case "lz4":
             case "best_compression":
             case "zlib":
-            case "zstd":
-            case "zstd_no_dict":
             case "lucene_default":
                 return s;
             default:
+                // Though the external visible codec name is zstd or zstd_no_dict, internally it is registered as Lucene95CustomCodec
+                // Hence this check is required, Lucene95CustomCodec will not be part of availableCodecs if the custom-codecs plugin
+                // is not installed
+                if (("zstd".equals(s) || "zstd_no_dict".equals(s)) && Codec.availableCodecs().contains("Lucene95CustomCodec")) {
+                    return s;
+                }
                 if (Codec.availableCodecs().contains(s) == false) { // we don't error message the not officially supported ones
                     throw new IllegalArgumentException(
-                        "unknown value for [index.codec] must be one of [default, lz4, best_compression, zlib, zstd, zstd_no_dict] but was: "
-                            + s
+                        "unknown value for [index.codec] must be one of [default, lz4, best_compression, zlib] but was: " + s
                     );
                 }
                 return s;
@@ -181,9 +184,6 @@ public final class EngineConfig {
 
     private static void doValidateCodecSettings(final String codec) {
         switch (codec) {
-            case "zstd":
-            case "zstd_no_dict":
-                return;
             case "best_compression":
             case "zlib":
             case "lucene_default":
@@ -191,6 +191,12 @@ public final class EngineConfig {
             case "lz4":
                 break;
             default:
+                // Though the external visible codec name is zstd or zstd_no_dict, internally it is registered as Lucene95CustomCodec
+                // Hence this check is required, Lucene95CustomCodec will not be part of availableCodecs if the custom-codecs plugin
+                // is not installed
+                if (("zstd".equals(codec) || "zstd_no_dict".equals(codec)) && Codec.availableCodecs().contains("Lucene95CustomCodec")) {
+                    return;
+                }
                 if (Codec.availableCodecs().contains(codec)) {
                     Codec luceneCodec = Codec.forName(codec);
                     if (luceneCodec instanceof CodecSettings
@@ -238,6 +244,7 @@ public final class EngineConfig {
         this.codecService = builder.codecService;
         this.eventListener = builder.eventListener;
         codecName = builder.indexSettings.getValue(INDEX_CODEC_SETTING);
+
         // We need to make the indexing buffer for this shard at least as large
         // as the amount of memory that is available for all engines on the
         // local node so that decisions to flush segments to disk are made by
