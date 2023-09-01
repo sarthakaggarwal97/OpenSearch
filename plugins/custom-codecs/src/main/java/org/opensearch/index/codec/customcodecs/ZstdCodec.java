@@ -32,6 +32,13 @@ public class ZstdCodec extends Lucene95CustomCodec {
         super(Mode.ZSTD, compressionLevel);
     }
 
+    /**
+     * Creates a new ZstdCodec instance.
+     *
+     * @param mapperService The mapper service.
+     * @param logger The logger.
+     * @param compressionLevel The compression level.
+     */
     public ZstdCodec(MapperService mapperService, Logger logger, int compressionLevel) {
         super(Mode.ZSTD, compressionLevel, mapperService, logger);
     }

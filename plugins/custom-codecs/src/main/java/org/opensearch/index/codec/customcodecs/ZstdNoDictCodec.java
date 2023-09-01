@@ -32,6 +32,13 @@ public class ZstdNoDictCodec extends Lucene95CustomCodec {
         super(Mode.ZSTD_NO_DICT, compressionLevel);
     }
 
+    /**
+     * Creates a new ZstdNoDictCodec instance.
+     *
+     * @param mapperService The mapper service.
+     * @param logger The logger.
+     * @param compressionLevel The compression level.
+     */
     public ZstdNoDictCodec(MapperService mapperService, Logger logger, int compressionLevel) {
         super(Mode.ZSTD_NO_DICT, compressionLevel, mapperService, logger);
     }
