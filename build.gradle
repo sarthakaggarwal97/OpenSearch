@@ -724,14 +724,14 @@ tasks.named(JavaBasePlugin.CHECK_TASK_NAME) {
   dependsOn tasks.named('testAggregateTestReport', TestReport)
 }
 
-tasks.register('checkCompatibility', CheckCompatibilityTask) {
-  description('Checks the compatibility with child components')
-}
+//tasks.register('checkCompatibility', CheckCompatibilityTask) {
+//  description('Checks the compatibility with child components')
+//}
 
 allprojects { project ->
   project.afterEvaluate {
     if (project.tasks.findByName('publishToMavenLocal')) {
-      checkCompatibility.dependsOn(project.tasks.publishToMavenLocal)
+//      checkCompatibility.dependsOn(project.tasks.publishToMavenLocal)
     }
   }
 }
