@@ -99,6 +99,11 @@ import org.opensearch.indices.IndicesService;
 import org.opensearch.indices.SystemIndices;
 import org.opensearch.node.NodeClosedException;
 import org.opensearch.tasks.Task;
+import org.opensearch.telemetry.tracing.ScopedSpan;
+import org.opensearch.telemetry.tracing.SpanContext;
+import org.opensearch.telemetry.tracing.SpanCreationContext;
+import org.opensearch.telemetry.tracing.Tracer;
+import org.opensearch.telemetry.tracing.attributes.Attributes;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.threadpool.ThreadPool.Names;
 import org.opensearch.transport.TransportChannel;
@@ -107,6 +112,7 @@ import org.opensearch.transport.TransportRequestOptions;
 import org.opensearch.transport.TransportService;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -137,6 +143,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
     private final MappingUpdatedAction mappingUpdatedAction;
     private final SegmentReplicationPressureService segmentReplicationPressureService;
     private final RemoteStorePressureService remoteStorePressureService;
+    private static Tracer tracer;
 
     /**
      * This action is used for performing primary term validation. With remote translog enabled, the translogs would
@@ -161,7 +168,8 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
         IndexingPressureService indexingPressureService,
         SegmentReplicationPressureService segmentReplicationPressureService,
         RemoteStorePressureService remoteStorePressureService,
-        SystemIndices systemIndices
+        SystemIndices systemIndices,
+        Tracer tracer
     ) {
         super(
             settings,
@@ -194,6 +202,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
             PrimaryTermValidationRequest::new,
             this::handlePrimaryTermValidationRequest
         );
+        TransportShardBulkAction.tracer = tracer;
     }
 
     protected void handlePrimaryTermValidationRequest(
@@ -462,23 +471,26 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
 
             @Override
             protected void doRun() throws Exception {
-                while (context.hasMoreOperationsToExecute()) {
-                    if (executeBulkItemRequest(
-                        context,
-                        updateHelper,
-                        nowInMillisSupplier,
-                        mappingUpdater,
-                        waitForMappingUpdate,
-                        ActionListener.wrap(v -> executor.execute(this), this::onRejection)
-                    ) == false) {
-                        // We are waiting for a mapping update on another thread, that will invoke this action again once its done
-                        // so we just break out here.
-                        return;
+                try (ScopedSpan spanScope = tracer.startScopedSpan(new SpanCreationContext("performOnPrimary", Attributes.create().addAttribute("indices", Arrays.toString(context.getBulkShardRequest().indices())).addAttribute("shardID", String.valueOf(context.getBulkShardRequest().shardId()))))) {
+                    while (context.hasMoreOperationsToExecute()) {
+                        if (executeBulkItemRequest(
+                            context,
+                            updateHelper,
+                            nowInMillisSupplier,
+                            mappingUpdater,
+                            waitForMappingUpdate,
+                            tracer.getCurrentSpan(),
+                            ActionListener.wrap(v -> executor.execute(this), this::onRejection)
+                        ) == false) {
+                            // We are waiting for a mapping update on another thread, that will invoke this action again once its done
+                            // so we just break out here.
+                            return;
+                        }
+                        assert context.isInitial(); // either completed and moved to next or reset
                     }
-                    assert context.isInitial(); // either completed and moved to next or reset
+                    // We're done, there's no more operations to execute so we resolve the wrapped listener
+                    finishRequest();
                 }
-                // We're done, there's no more operations to execute so we resolve the wrapped listener
-                finishRequest();
             }
 
             @Override
@@ -556,6 +568,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
         LongSupplier nowInMillisSupplier,
         MappingUpdatePerformer mappingUpdater,
         Consumer<ActionListener<Void>> waitForMappingUpdate,
+        SpanContext spanContext,
         ActionListener<Void> itemDoneListener
     ) throws Exception {
         final DocWriteRequest.OpType opType = context.getCurrent().opType();
@@ -616,15 +629,19 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
             );
         } else {
             final IndexRequest request = context.getRequestToExecute();
-            result = primary.applyIndexOperationOnPrimary(
-                version,
-                request.versionType(),
-                new SourceToParse(request.index(), request.id(), request.source(), request.getContentType(), request.routing()),
-                request.ifSeqNo(),
-                request.ifPrimaryTerm(),
-                request.getAutoGeneratedTimestamp(),
-                request.isRetry()
-            );
+//            Span span = tracer.startSpan("applyIndexOperationOnPrimary", Attributes.create().addAttribute("index", request.index()));
+            try (ScopedSpan spanScope = tracer.startScopedSpan(new SpanCreationContext("applyIndexOperationOnPrimary", Attributes.create().addAttribute("index", request.index())))){
+//            try (SpanScope spanScope = tracer.withSpanInScope(span)){
+                result = primary.applyIndexOperationOnPrimary(
+                    version,
+                    request.versionType(),
+                    new SourceToParse(request.index(), request.id(), request.source(), request.getContentType(), request.routing()),
+                    request.ifSeqNo(),
+                    request.ifPrimaryTerm(),
+                    request.getAutoGeneratedTimestamp(),
+                    request.isRetry()
+                );
+            }
         }
         if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
 
@@ -867,15 +884,17 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
                     indexRequest.getContentType(),
                     indexRequest.routing()
                 );
-                result = replica.applyIndexOperationOnReplica(
-                    primaryResponse.getId(),
-                    primaryResponse.getSeqNo(),
-                    primaryResponse.getPrimaryTerm(),
-                    primaryResponse.getVersion(),
-                    indexRequest.getAutoGeneratedTimestamp(),
-                    indexRequest.isRetry(),
-                    sourceToParse
-                );
+                try (ScopedSpan spanScope = tracer.startScopedSpan(new SpanCreationContext("applyIndexOperationOnReplica", Attributes.create().addAttribute("index", primaryResponse.getIndex())))) {
+                    result = replica.applyIndexOperationOnReplica(
+                        primaryResponse.getId(),
+                        primaryResponse.getSeqNo(),
+                        primaryResponse.getPrimaryTerm(),
+                        primaryResponse.getVersion(),
+                        indexRequest.getAutoGeneratedTimestamp(),
+                        indexRequest.isRetry(),
+                        sourceToParse
+                    );
+                }
                 break;
             case DELETE:
                 DeleteRequest deleteRequest = (DeleteRequest) docWriteRequest;

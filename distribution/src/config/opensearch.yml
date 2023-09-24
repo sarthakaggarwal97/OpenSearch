@@ -121,3 +121,7 @@ ${path.logs}
 # index searcher threadpool.
 #
 #opensearch.experimental.feature.concurrent_segment_search.enabled: false
+
+telemetry.otel.tracer.span.exporter.class: io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+bootstrap.system_call_filter: false
+telemetry.tracer.sampler.probability: 1.0
