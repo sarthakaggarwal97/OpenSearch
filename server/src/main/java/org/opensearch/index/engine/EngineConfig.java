@@ -157,6 +157,19 @@ public final class EngineConfig {
         }
     }, Property.IndexScope, Property.NodeScope);
 
+    public static final Setting<Integer> INDEX_CODEC_LZ4_BLOCK_SIZE_SETTING =
+            Setting.intSetting("index.codec.lz4.block_size", 16, Property.IndexScope, Property.Dynamic);
+
+    public static final Setting<Integer> INDEX_CODEC_ZLIB_BLOCK_SIZE_SETTING =
+            Setting.intSetting("index.codec.zlib.block_size", 60, Property.IndexScope, Property.Dynamic);
+
+    public static final Setting<Boolean> INDEX_CODEC_ENABLE_HYBRID_COMPRESSION =
+        Setting.boolSetting("index.codec.hybrid_compression", true, Property.IndexScope, Property.Dynamic);
+
+    public static final Setting<Integer> INDEX_CODEC_NO_OP_COMPRESSION_SIZE =
+            Setting.intSetting("index.codec.no_compression_size", 100, Property.IndexScope, Property.Dynamic);
+
+
     /**
      * Index setting to change the compression level of zstd and zstd_no_dict lucene codecs.
      * Compression Level gives a trade-off between compression ratio and speed. The higher compression level results in higher compression ratio but slower compression and decompression speeds.

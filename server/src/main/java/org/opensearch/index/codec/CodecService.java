@@ -39,6 +39,7 @@ import org.apache.lucene.codecs.lucene95.Lucene95Codec.Mode;
 import org.opensearch.common.Nullable;
 import org.opensearch.common.collect.MapBuilder;
 import org.opensearch.index.IndexSettings;
+import org.opensearch.index.engine.EngineConfig;
 import org.opensearch.index.mapper.MapperService;
 
 import java.util.Map;
@@ -67,34 +68,22 @@ public class CodecService {
     public CodecService(@Nullable MapperService mapperService, IndexSettings indexSettings, Logger logger) {
         final MapBuilder<String, Codec> codecs = MapBuilder.<String, Codec>newMapBuilder();
         assert null != indexSettings;
-        if (mapperService == null) {
-            codecs.put(DEFAULT_CODEC, new Lucene95Codec());
-            codecs.put(LZ4, new Lucene95Codec());
-            codecs.put(BEST_COMPRESSION_CODEC, new Lucene95Codec(Mode.BEST_COMPRESSION));
-            codecs.put(ZLIB, new Lucene95Codec(Mode.BEST_COMPRESSION));
-        } else {
-            codecs.put(DEFAULT_CODEC, new PerFieldMappingPostingFormatCodec(Mode.BEST_SPEED, mapperService, logger));
-            codecs.put(LZ4, new PerFieldMappingPostingFormatCodec(Mode.BEST_SPEED, mapperService, logger));
-            codecs.put(BEST_COMPRESSION_CODEC, new PerFieldMappingPostingFormatCodec(Mode.BEST_COMPRESSION, mapperService, logger));
-            codecs.put(ZLIB, new PerFieldMappingPostingFormatCodec(Mode.BEST_COMPRESSION, mapperService, logger));
-        }
-        codecs.put(LUCENE_DEFAULT_CODEC, Codec.getDefault());
-        for (String codec : Codec.availableCodecs()) {
-            codecs.put(codec, Codec.forName(codec));
-        }
-        this.codecs = codecs.immutableMap();
-    }
 
-    @Deprecated(since = "2.9.0", forRemoval = true)
-    public CodecService(@Nullable MapperService mapperService, Logger logger) {
-        final MapBuilder<String, Codec> codecs = MapBuilder.<String, Codec>newMapBuilder();
+        int lz4BlockSize = indexSettings.getValue(EngineConfig.INDEX_CODEC_LZ4_BLOCK_SIZE_SETTING);
+        int zlibBlockSize = indexSettings.getValue(EngineConfig.INDEX_CODEC_ZLIB_BLOCK_SIZE_SETTING);
+        int noopCompressionSize = indexSettings.getValue(EngineConfig.INDEX_CODEC_NO_OP_COMPRESSION_SIZE);
+        boolean enableHybridCompression = indexSettings.getValue(EngineConfig.INDEX_CODEC_ENABLE_HYBRID_COMPRESSION);
+
         if (mapperService == null) {
-            codecs.put(DEFAULT_CODEC, new Lucene95Codec());
-            codecs.put(BEST_COMPRESSION_CODEC, new Lucene95Codec(Mode.BEST_COMPRESSION));
+            codecs.put(DEFAULT_CODEC, new Lucene99CoreCodec(Mode.BEST_SPEED, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression));
+            codecs.put(LZ4, new Lucene99CoreCodec(Mode.BEST_SPEED, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression));
+            codecs.put(BEST_COMPRESSION_CODEC, new Lucene99CoreCodec(Mode.BEST_COMPRESSION, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression));
+            codecs.put(ZLIB, new Lucene99CoreCodec(Mode.BEST_COMPRESSION, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression));
         } else {
-            IndexSettings indexSettings = mapperService.getIndexSettings();
-            codecs.put(DEFAULT_CODEC, new PerFieldMappingPostingFormatCodec(Mode.BEST_SPEED, mapperService, logger));
-            codecs.put(BEST_COMPRESSION_CODEC, new PerFieldMappingPostingFormatCodec(Mode.BEST_COMPRESSION, mapperService, logger));
+            codecs.put(DEFAULT_CODEC, new Lucene99CoreCodec(Mode.BEST_SPEED, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression, mapperService, logger));
+            codecs.put(LZ4, new Lucene99CoreCodec(Mode.BEST_SPEED, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression, mapperService, logger));
+            codecs.put(BEST_COMPRESSION_CODEC, new Lucene99CoreCodec(Mode.BEST_COMPRESSION, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression, mapperService, logger));
+            codecs.put(ZLIB, new Lucene99CoreCodec(Mode.BEST_COMPRESSION, lz4BlockSize, zlibBlockSize, noopCompressionSize, enableHybridCompression, mapperService, logger));
         }
         codecs.put(LUCENE_DEFAULT_CODEC, Codec.getDefault());
         for (String codec : Codec.availableCodecs()) {
