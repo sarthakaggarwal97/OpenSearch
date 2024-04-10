@@ -82,7 +82,7 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
         if (si.getAttribute(MODE_KEY) != null) {
             String value = si.getAttribute(MODE_KEY);
             Lucene95Codec.Mode mode = Lucene95Codec.Mode.valueOf(value);
-            return impl(mode, si).fieldsReader(directory, si, fn, context);
+            return impl(mode, si, context).fieldsReader(directory, si, fn, context);
         } else {
             throw new IllegalStateException("missing value for " + MODE_KEY + " for segment: " + si.name);
         }
@@ -105,15 +105,15 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
                 "found existing value for " + MODE_KEY + " for segment: " + si.name + "old=" + previous + ", new=" + mode.name()
             );
         }
-        return impl(mode, si).fieldsWriter(directory, si, context);
+        return impl(mode, si, context).fieldsWriter(directory, si, context);
     }
 
-    StoredFieldsFormat impl(Lucene95Codec.Mode mode, SegmentInfo si) {
+    StoredFieldsFormat impl(Lucene95Codec.Mode mode, SegmentInfo si, IOContext context) {
         switch (mode) {
             case BEST_SPEED:
-                return getLZ4CompressingStoredFieldsFormat(si);
+                return getLZ4CompressingStoredFieldsFormat(context);
             case BEST_COMPRESSION:
-                return getZlibCompressingStoredFieldsFormat(si);
+                return getZlibCompressingStoredFieldsFormat(context);
             default:
                 throw new AssertionError();
         }
@@ -139,13 +139,11 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
      */
     public static final CompressionMode BEST_SPEED_MODE = new LZ4WithPresetDictCompressionMode();
 
-    private StoredFieldsFormat getLZ4CompressingStoredFieldsFormat(SegmentInfo si) {
+    private StoredFieldsFormat getLZ4CompressingStoredFieldsFormat(IOContext ioContext) {
 
-        if (enableHybridCompression){
-            if (si.getAttribute("estimatedMergeSize") != null) {
-                long estimatedMergeSize = Long.parseLong(si.getAttribute("estimatedMergeSize"));
-
-                if (estimatedMergeSize > this.noopCompressionSize * 1024 * 1024) {
+        if (enableHybridCompression) {
+            if (ioContext.context.equals(IOContext.Context.FLUSH)){
+                if (ioContext.flushInfo.estimatedSegmentSize > this.noopCompressionSize * 1024 * 1024){
                     return new Lucene90CompressingStoredFieldsFormat(
                         "Lucene90StoredFieldsFastData",
                         BEST_SPEED_MODE,
@@ -155,7 +153,17 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
                     );
                 }
             }
-
+            if (ioContext.context.equals(IOContext.Context.MERGE)){
+                if (ioContext.mergeInfo.estimatedMergeBytes > this.noopCompressionSize * 1024 * 1024) {
+                    return new Lucene90CompressingStoredFieldsFormat(
+                        "Lucene90StoredFieldsFastData",
+                        BEST_SPEED_MODE,
+                        BEST_SPEED_BLOCK_LENGTH * this.lz4BlockSize,
+                        1024,
+                        10
+                    );
+                }
+            }
             return new Lucene90CompressingStoredFieldsFormat(
                 "Lucene90StoredFieldsNoCompressData",
                 NO_COMPRESSION_MODE,
@@ -172,15 +180,13 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
             1024,
             10
         );
-
     }
 
-    private StoredFieldsFormat getZlibCompressingStoredFieldsFormat(SegmentInfo si) {
+    private StoredFieldsFormat getZlibCompressingStoredFieldsFormat(IOContext ioContext) {
 
-        if (enableHybridCompression){
-            if (si.getAttribute("estimatedMergeSize") != null) {
-                long estimatedMergeSize = Long.parseLong(si.getAttribute("estimatedMergeSize"));
-                if (estimatedMergeSize < this.noopCompressionSize * 1024 * 1024) {
+        if (enableHybridCompression) {
+            if (ioContext.context.equals(IOContext.Context.FLUSH)){
+                if (ioContext.flushInfo.estimatedSegmentSize > this.noopCompressionSize * 1024 * 1024) {
                     return new Lucene90CompressingStoredFieldsFormat(
                         "Lucene90StoredFieldsHighData",
                         BEST_COMPRESSION_MODE,
@@ -190,11 +196,20 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
                     );
                 }
             }
+            if (ioContext.context.equals(IOContext.Context.MERGE)){
+                return new Lucene90CompressingStoredFieldsFormat(
+                    "Lucene90StoredFieldsHighData",
+                    BEST_COMPRESSION_MODE,
+                    BEST_COMPRESSION_BLOCK_LENGTH * this.zlibBlockSize,
+                    4096,
+                    10
+                );
+            }
             return new Lucene90CompressingStoredFieldsFormat(
                 "Lucene90StoredFieldsNoCompressData",
                 NO_COMPRESSION_MODE,
-                BEST_COMPRESSION_BLOCK_LENGTH * this.zlibBlockSize,
-                4096,
+                    BEST_COMPRESSION_BLOCK_LENGTH * this.zlibBlockSize,
+                1024,
                 10
             );
         }
