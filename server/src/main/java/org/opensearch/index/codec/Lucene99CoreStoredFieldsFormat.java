@@ -53,7 +53,7 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
      * default constructor
      */
     public Lucene99CoreStoredFieldsFormat() {
-        this(Lucene95Codec.Mode.BEST_SPEED, 16, 60, 100, true);
+        this(Lucene95Codec.Mode.BEST_SPEED, 8, 48, 100, true);
     }
 
     /**
@@ -125,7 +125,7 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
     }
 
     // Shoot for 10 sub blocks of 48kB each.
-    private static final int BEST_COMPRESSION_BLOCK_LENGTH = 10 * 1024;
+    private static final int BEST_COMPRESSION_BLOCK_LENGTH = 10 * 1024 * 1024;
 
     /**
      * Compression mode for {@link Lucene90StoredFieldsFormat.Mode#BEST_COMPRESSION}
@@ -133,7 +133,7 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
     public static final CompressionMode BEST_COMPRESSION_MODE = new DeflateWithPresetDictCompressionMode();
 
     // Shoot for 10 sub blocks of 8kB each.
-    private static final int BEST_SPEED_BLOCK_LENGTH = 10 * 1024;
+    private static final int BEST_SPEED_BLOCK_LENGTH = 10 * 1024 * 1024;
 
     /**
      * Compression mode for {@link Lucene90StoredFieldsFormat.Mode#BEST_SPEED}
@@ -143,15 +143,7 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
     private StoredFieldsFormat getLZ4CompressingStoredFieldsFormat(SegmentInfo si, IOContext ioContext) {
 
         if (enableHybridCompression) {
-            if (si.getAttributes().containsKey("isStoredFieldsInitiated")){
-                boolean isStoredFieldsInitiated = Boolean.parseBoolean(si.getAttributes().get("isStoredFieldsInitiated"));
-                if (isStoredFieldsInitiated){
-                    return getNoCompressionMode();
-                } else {
-                    return getLZ4Mode();
-                }
-            }
-            if (ioContext.mergeInfo.estimatedMergeBytes > this.noopCompressionSize * 1024 * 1024) {
+            if ( ioContext.mergeInfo != null && ioContext.mergeInfo.estimatedMergeBytes > this.noopCompressionSize * 1024 * 1024) {
                 return getLZ4Mode();
             }
             return getNoCompressionMode();
@@ -193,15 +185,7 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
     private StoredFieldsFormat getZlibCompressingStoredFieldsFormat(SegmentInfo si, IOContext ioContext) {
 
         if (enableHybridCompression) {
-            if (si.getAttributes().containsKey("isStoredFieldsInitiated")){
-                boolean isStoredFieldsInitiated = Boolean.parseBoolean(si.getAttributes().get("isStoredFieldsInitiated"));
-                if (isStoredFieldsInitiated){
-                    return getNoCompressionMode();
-                } else {
-                    return getZlibMode();
-                }
-            }
-            if (ioContext.mergeInfo.estimatedMergeBytes > this.noopCompressionSize * 1024 * 1024) {
+            if (ioContext.mergeInfo != null && ioContext.mergeInfo.estimatedMergeBytes > this.noopCompressionSize * 1024 * 1024) {
                 return getZlibMode();
             }
             return getNoCompressionMode();
