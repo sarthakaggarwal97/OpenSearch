@@ -153,7 +153,7 @@ public class Lucene99CoreStoredFieldsFormat extends StoredFieldsFormat {
 
     public StoredFieldsFormat getNoCompressionMode(){
         return new Lucene90CompressingStoredFieldsFormat(
-                "Lucene90StoredFieldsNoCompressData",
+                "Lucene90StoredFieldsFastData",
                 NO_COMPRESSION_MODE,
                 BEST_SPEED_BLOCK_LENGTH * this.lz4BlockSize,
                 1024,

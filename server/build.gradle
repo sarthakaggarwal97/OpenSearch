@@ -112,7 +112,8 @@ dependencies {
   testRuntimeOnly project(':libs:opensearch-plugin-classloader')
 
   // lucene
-  api "org.apache.lucene:lucene-core:${versions.lucene}"
+  api files('/Users/sarthagg/workplace/actual/lucene/lucene/core/build/libs/lucene-core-9.7.0-SNAPSHOT.jar')
+//  api "org.apache.lucene:lucene-core:${versions.lucene}"
   api "org.apache.lucene:lucene-analysis-common:${versions.lucene}"
   api "org.apache.lucene:lucene-backward-codecs:${versions.lucene}"
   api "org.apache.lucene:lucene-grouping:${versions.lucene}"
