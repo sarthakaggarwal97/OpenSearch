@@ -137,6 +137,7 @@ public final class EngineConfig {
             case "best_compression":
             case "zlib":
             case "lucene_default":
+            case "simple":
                 return s;
             default:
                 if (Codec.availableCodecs().contains(s)) {
