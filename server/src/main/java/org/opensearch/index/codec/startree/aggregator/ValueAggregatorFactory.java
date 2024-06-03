@@ -16,7 +16,9 @@
  */
 package org.opensearch.index.codec.startree.aggregator;
 
-/** Value aggregator factory for a given aggregation type */
+/**
+ * Value aggregator factory for a given aggregation type
+ */
 public class ValueAggregatorFactory {
     private ValueAggregatorFactory() {}
 
@@ -32,8 +34,12 @@ public class ValueAggregatorFactory {
                 return new CountValueAggregator();
             case SUM:
                 return new SumValueAggregator();
-            // case AVG:
-            // return new AvgValueAggregator();
+            case AVG:
+                return new AvgValueAggregator();
+            case MAX:
+                return new MaxValueAggregator();
+            case MIN:
+                return new MinValueAggregator();
             default:
                 throw new IllegalStateException("Unsupported aggregation type: " + aggregationType);
         }

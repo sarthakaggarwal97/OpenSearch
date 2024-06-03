@@ -16,22 +16,32 @@
  */
 package org.opensearch.index.codec.startree.aggregator;
 
-/** Data type of doc values */
+/**
+ * Data type of doc values
+ */
 public enum DataType {
     INT(Integer.BYTES, true),
     LONG(Long.BYTES, true),
     FLOAT(Float.BYTES, true),
-    DOUBLE(Double.BYTES, true);
+    DOUBLE(Double.BYTES, true),
+    BYTES(true);
 
     private final int _size;
     private final boolean _numeric;
+
+    DataType(boolean numeric) {
+        _size = -1;
+        _numeric = numeric;
+    }
 
     DataType(int size, boolean numeric) {
         _size = size;
         _numeric = numeric;
     }
 
-    /** Returns the number of bytes needed to store the data type. */
+    /**
+     * Returns the number of bytes needed to store the data type.
+     */
     public int size() {
         if (_size >= 0) {
             return _size;
@@ -47,7 +57,9 @@ public enum DataType {
         return _numeric;
     }
 
-    /** Converts the given string value to the data type. Returns byte[] for BYTES. */
+    /**
+     * Converts the given string value to the data type. Returns byte[] for BYTES.
+     */
     public Object convert(String value) {
         try {
             switch (this) {

@@ -16,11 +16,15 @@
  */
 package org.opensearch.index.codec.startree.aggregator;
 
-/** Aggregated function type */
+/**
+ * Aggregated function type
+ */
 public enum AggregationFunctionType {
     COUNT("count"),
-    SUM("sum");
-    // AVG("avg");
+    SUM("sum"),
+    MIN("min"),
+    MAX("max"),
+    AVG("avg");
 
     private final String name;
 

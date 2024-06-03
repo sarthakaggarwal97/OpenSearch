@@ -17,7 +17,7 @@
 package org.opensearch.index.codec.startree.aggregator;
 
 /** Count value aggregator */
-public class CountValueAggregator implements ValueAggregator {
+public class CountValueAggregator implements ValueAggregator<Object, Long> {
     public static final DataType AGGREGATED_VALUE_TYPE = DataType.LONG;
 
     @Override
@@ -31,12 +31,12 @@ public class CountValueAggregator implements ValueAggregator {
     }
 
     @Override
-    public Long getInitialAggregatedValue(Long rawValue) {
-        return 1l;
+    public Long getInitialAggregatedValue(Object rawValue) {
+        return 1L;
     }
 
     @Override
-    public Long applyRawValue(Long value, Long rawValue) {
+    public Long applyRawValue(Long value, Object rawValue) {
         return value + 1;
     }
 

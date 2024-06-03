@@ -19,40 +19,52 @@ package org.opensearch.index.codec.startree.aggregator;
 /**
  * A value aggregator that pre-aggregates on the input values for a specific type of aggregation.
  */
-public interface ValueAggregator {
+public interface ValueAggregator<R, A> {
 
-    /** Returns the type of the aggregation. */
+    /**
+     * Returns the type of the aggregation.
+     */
     AggregationFunctionType getAggregationType();
 
-    /** Returns the data type of the aggregated value. */
+    /**
+     * Returns the data type of the aggregated value.
+     */
     DataType getAggregatedValueType();
 
-    /** Returns the initial aggregated value. */
-    Long getInitialAggregatedValue(Long rawValue);
+    /**
+     * Returns the initial aggregated value.
+     */
+    A getInitialAggregatedValue(R rawValue);
 
     /**
      * Applies a raw value to the current aggregated value.
-     *
      * <p>NOTE: if value is mutable, will directly modify the value.
      */
-    Long applyRawValue(Long value, Long rawValue);
+    A applyRawValue(A value, R rawValue);
 
     /**
      * Applies an aggregated value to the current aggregated value.
-     *
      * <p>NOTE: if value is mutable, will directly modify the value.
      */
-    Long applyAggregatedValue(Long value, Long aggregatedValue);
+    A applyAggregatedValue(A value, A aggregatedValue);
 
-    /** Clones an aggregated value. */
-    Long cloneAggregatedValue(Long value);
+    /**
+     * Clones an aggregated value.
+     */
+    A cloneAggregatedValue(A value);
 
-    /** Returns the maximum size in bytes of the aggregated values seen so far. */
+    /**
+     * Returns the maximum size in bytes of the aggregated values seen so far.
+     */
     int getMaxAggregatedValueByteSize();
 
-    /** Serializes an aggregated value into a byte array. */
-    byte[] serializeAggregatedValue(Long value);
+    /**
+     * Serializes an aggregated value into a byte array.
+     */
+    byte[] serializeAggregatedValue(A value);
 
-    /** De-serializes an aggregated value from a byte array. */
-    Long deserializeAggregatedValue(byte[] bytes);
+    /**
+     * De-serializes an aggregated value from a byte array.
+     */
+    A deserializeAggregatedValue(byte[] bytes);
 }
