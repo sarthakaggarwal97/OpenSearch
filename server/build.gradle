@@ -111,6 +111,8 @@ dependencies {
   annotationProcessor "org.apache.logging.log4j:log4j-core:${versions.log4j}"
   annotationProcessor project(':libs:opensearch-common')
 
+  implementation 'it.unimi.dsi:fastutil:8.5.13'
+
   // jna
   api "net.java.dev.jna:jna:${versions.jna}"
 
