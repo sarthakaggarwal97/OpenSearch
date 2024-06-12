@@ -52,7 +52,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
 
     private static final Logger logger = LogManager.getLogger(BaseSingleStarTreeBuilder.class);
 
-    public static final int STAR_IN_DOC_VALUES_INDEX = 0;
+    public static final int STAR_IN_DOC_VALUES_INDEX = -1;
 
     protected final String[] dimensionsSplitOrder;
     protected final Set<Integer> skipStarNodeCreationForDimensions;
@@ -189,6 +189,13 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
      * @return Star-tree Document
      */
     public abstract StarTreeDocument getStarTreeDocument(int docId) throws IOException;
+
+    /**
+     * Returns the starTreeDocument of the given document Id in the star-tree.
+     *
+     * @return Star-tree Document
+     */
+    public abstract List<StarTreeDocument> getStarTreeDocuments() throws IOException;
 
     /**
      * Returns the dimension value of the given document and dimension Id in the star-tree.
@@ -362,6 +369,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
         logger.info("Generated star tree docs : [{}] from segment docs : [{}]", numStarTreeDocument, numSegmentStarTreeDocument);
 
         if (numDocs == 0) {
+            // TODO: Uncomment when segment codec is ready
             // StarTreeBuilderUtils.serializeTree(indexOutput, rootNode, dimensionsSplitOrder, numNodes);
             return;
         }
@@ -379,9 +387,11 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
         logger.info("Finished creating aggregated documents : {}", numAggregatedStarTreeDocument);
 
         // Create doc values indices in disk
-        createSortedDocValuesIndices(docValuesConsumer);
+        // TODO: Uncomment when segment codec is ready
+        // createSortedDocValuesIndices(docValuesConsumer);
 
         // Serialize and save in disk
+        // TODO: Uncomment when segment codec is ready
         // StarTreeBuilderUtils.serializeTree(indexOutput, rootNode, dimensionsSplitOrder, numNodes);
 
         // TODO: Write star tree metadata for off heap implementation

@@ -138,6 +138,11 @@ public class BaseSingleStarTreeBuilderTests extends OpenSearchTestCase {
             }
 
             @Override
+            public List<StarTreeDocument> getStarTreeDocuments() throws IOException {
+                return List.of();
+            }
+
+            @Override
             public long getDimensionValue(int docId, int dimensionId) throws IOException {
                 return 0;
             }
