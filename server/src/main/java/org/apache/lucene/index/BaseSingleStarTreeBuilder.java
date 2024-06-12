@@ -52,7 +52,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
 
     private static final Logger logger = LogManager.getLogger(BaseSingleStarTreeBuilder.class);
 
-    public static final int STAR_IN_DOC_VALUES_INDEX = 0;
+    public static final int STAR_IN_DOC_VALUES_INDEX = -1;
 
     protected final String[] dimensionsSplitOrder;
     protected final Set<Integer> skipStarNodeCreationForDimensions;
@@ -191,6 +191,13 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
     public abstract StarTreeDocument getStarTreeDocument(int docId) throws IOException;
 
     /**
+     * Returns the starTreeDocument of the given document Id in the star-tree.
+     *
+     * @return Star-tree Document
+     */
+    public abstract List<StarTreeDocument> getStarTreeDocuments() throws IOException;
+
+    /**
      * Returns the dimension value of the given document and dimension Id in the star-tree.
      *
      * @param docId       Document Id
@@ -208,7 +215,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
      * @param numDocs Number of documents in the segment
      * @return Iterator for the aggregated starTreeDocument
      */
-    public abstract Iterator<StarTreeDocument> sortAndAggregateSegmentStarTreeDocument(int numDocs) throws IOException;
+    public abstract Iterator<StarTreeDocument> processSegmentStarTreeDocuments(int numDocs) throws IOException;
 
     /**
      * Generates aggregated starTreeDocument for star-node.
@@ -318,7 +325,8 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
      * @param starTreeStarTreeDocument   Star-tree Document
      * @return Merged starTreeDocument
      */
-    public StarTreeDocument mergeStarTreeDocument(StarTreeDocument aggregatedStarTreeDocument, StarTreeDocument starTreeStarTreeDocument) {
+    public StarTreeDocument aggregateStarTreeDocument(StarTreeDocument aggregatedStarTreeDocument, StarTreeDocument starTreeStarTreeDocument) {
+        // aggregate the documents
         if (aggregatedStarTreeDocument == null) {
             long[] dimensions = Arrays.copyOf(starTreeStarTreeDocument.dimensions, numDimensions);
             Object[] metrics = new Object[numMetrics];
@@ -343,7 +351,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
         long startTime = System.currentTimeMillis();
         logger.info("Tree of Aggregations build is a go with config {}", compositeField);
 
-        Iterator<StarTreeDocument> starTreeDocumentIterator = sortAndAggregateSegmentStarTreeDocument(totalDocs);
+        Iterator<StarTreeDocument> starTreeDocumentIterator = processSegmentStarTreeDocuments(totalDocs);
         logger.info("Sorting and aggregating star-tree in ms : {}", (System.currentTimeMillis() - startTime));
         build(starTreeDocumentIterator);
         logger.info("Finished Building TOA in ms : {}", (System.currentTimeMillis() - startTime));
@@ -362,6 +370,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
         logger.info("Generated star tree docs : [{}] from segment docs : [{}]", numStarTreeDocument, numSegmentStarTreeDocument);
 
         if (numDocs == 0) {
+            // TODO: Uncomment when segment codec is ready
             // StarTreeBuilderUtils.serializeTree(indexOutput, rootNode, dimensionsSplitOrder, numNodes);
             return;
         }
@@ -379,9 +388,11 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
         logger.info("Finished creating aggregated documents : {}", numAggregatedStarTreeDocument);
 
         // Create doc values indices in disk
-        createSortedDocValuesIndices(docValuesConsumer);
+        // TODO: Uncomment when segment codec is ready
+        // createSortedDocValuesIndices(docValuesConsumer);
 
         // Serialize and save in disk
+        // TODO: Uncomment when segment codec is ready
         // StarTreeBuilderUtils.serializeTree(indexOutput, rootNode, dimensionsSplitOrder, numNodes);
 
         // TODO: Write star tree metadata for off heap implementation
@@ -494,7 +505,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
             } else {
                 // If it has multiple documents, aggregate all of them
                 for (int i = node.startDocId; i < node.endDocId; i++) {
-                    aggregatedStarTreeDocument = mergeStarTreeDocument(aggregatedStarTreeDocument, getStarTreeDocument(i));
+                    aggregatedStarTreeDocument = aggregateStarTreeDocument(aggregatedStarTreeDocument, getStarTreeDocument(i));
                 }
                 assert aggregatedStarTreeDocument != null;
                 for (int i = node.dimensionId + 1; i < numDimensions; i++) {
@@ -518,7 +529,7 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
             } else {
                 // If no star child exists, aggregate all aggregated documents from non-star children
                 for (StarTreeBuilderUtils.TreeNode child : node.children.values()) {
-                    aggregatedStarTreeDocument = mergeStarTreeDocument(aggregatedStarTreeDocument, createAggregatedDocs(child));
+                    aggregatedStarTreeDocument = aggregateStarTreeDocument(aggregatedStarTreeDocument, createAggregatedDocs(child));
                 }
                 assert aggregatedStarTreeDocument != null;
                 for (int i = node.dimensionId + 1; i < numDimensions; i++) {

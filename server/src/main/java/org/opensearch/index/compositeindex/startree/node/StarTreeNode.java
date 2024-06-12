@@ -16,7 +16,7 @@ import java.util.Iterator;
  * @opensearch.experimental
  */
 public interface StarTreeNode {
-    long ALL = -1l;
+    long ALL = -1L;
 
     /** Get the index of the dimension. */
     int getDimensionId() throws IOException;

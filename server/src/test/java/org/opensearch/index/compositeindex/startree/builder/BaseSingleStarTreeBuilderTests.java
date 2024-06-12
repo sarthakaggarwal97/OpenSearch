@@ -138,12 +138,17 @@ public class BaseSingleStarTreeBuilderTests extends OpenSearchTestCase {
             }
 
             @Override
+            public List<StarTreeDocument> getStarTreeDocuments() throws IOException {
+                return List.of();
+            }
+
+            @Override
             public long getDimensionValue(int docId, int dimensionId) throws IOException {
                 return 0;
             }
 
             @Override
-            public Iterator<StarTreeDocument> sortAndAggregateSegmentStarTreeDocument(int numDocs) throws IOException {
+            public Iterator<StarTreeDocument> processSegmentStarTreeDocuments(int numDocs) throws IOException {
                 return null;
             }
 
@@ -169,22 +174,22 @@ public class BaseSingleStarTreeBuilderTests extends OpenSearchTestCase {
         assertEquals(metricTypeFieldPairs, expectedMetricTypeFieldPairs);
     }
 
-    public void test_mergeStarTreeDocument() {
+    public void test_aggregateStarTreeDocument() {
         StarTreeDocument starTreeDocument1 = new StarTreeDocument(new long[] { 1, 3, 5, 8 }, new Double[] { 4.0, 8.0 });
         StarTreeDocument starTreeDocument2 = new StarTreeDocument(new long[] { 1, 3, 5, 8 }, new Double[] { 10.0, 6.0 });
 
         StarTreeDocument expectedeMergedStarTreeDocument = new StarTreeDocument(new long[] { 1, 3, 5, 8 }, new Double[] { 14.0, 14.0 });
-        StarTreeDocument mergedStarTreeDocument = builder.mergeStarTreeDocument(starTreeDocument1, starTreeDocument2);
+        StarTreeDocument mergedStarTreeDocument = builder.aggregateStarTreeDocument(starTreeDocument1, starTreeDocument2);
 
         assertEquals(mergedStarTreeDocument.metrics[0], expectedeMergedStarTreeDocument.metrics[0]);
         assertEquals(mergedStarTreeDocument.metrics[1], expectedeMergedStarTreeDocument.metrics[1]);
     }
 
-    public void test_mergeStarTreeDocument_nullAggregatedStarTreeDocument() {
+    public void test_aggregateStarTreeDocument_nullAggregatedStarTreeDocument() {
         StarTreeDocument starTreeDocument = new StarTreeDocument(new long[] { 1, 3, 5, 8 }, new Double[] { 10.0, 6.0 });
 
         StarTreeDocument expectedeMergedStarTreeDocument = new StarTreeDocument(new long[] { 1, 3, 5, 8 }, new Double[] { 10.0, 6.0 });
-        StarTreeDocument mergedStarTreeDocument = builder.mergeStarTreeDocument(null, starTreeDocument);
+        StarTreeDocument mergedStarTreeDocument = builder.aggregateStarTreeDocument(null, starTreeDocument);
 
         assertEquals(mergedStarTreeDocument.metrics[0], expectedeMergedStarTreeDocument.metrics[0]);
         assertEquals(mergedStarTreeDocument.metrics[1], expectedeMergedStarTreeDocument.metrics[1]);
