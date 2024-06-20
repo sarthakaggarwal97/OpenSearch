@@ -699,13 +699,17 @@ public abstract class BaseSingleStarTreeBuilder implements SingleTreeBuilder {
             }
             for (int i = 0; i < starTreeDocument.metrics.length; i++) {
                 try {
+                    ValueAggregator valueAggregator = valueAggregators[i];
                     long metricValue;
-                    if (starTreeDocument.metrics[i] instanceof Double) {
-                        metricValue = NumericUtils.doubleToSortableLong((Double) starTreeDocument.metrics[i]);
-                    } else if (starTreeDocument.metrics[i] instanceof Long) {
-                        metricValue = (Long) starTreeDocument.metrics[i];
-                    } else {
-                        metricValue = NumericUtils.sortableBytesToLong((byte[]) starTreeDocument.metrics[i], 0);
+                    switch (valueAggregator.getAggregatedValueType()){
+                        case LONG:
+                            metricValue = (Long) starTreeDocument.metrics[i];
+                            break;
+                        case DOUBLE:
+                            metricValue = NumericUtils.doubleToSortableLong((Double) starTreeDocument.metrics[i]);
+                            break;
+                        default:
+                            metricValue = NumericUtils.sortableBytesToLong((byte[]) starTreeDocument.metrics[i], 0);
                     }
                     StarTreeDocValuesWriter starTreeDocValuesWriter = metricWriters.get(i);
                     ((SortedNumericDocValuesWriter) starTreeDocValuesWriter.getDocValuesWriter()).addValue(docId, metricValue);
