@@ -22,7 +22,6 @@ import org.opensearch.index.query.QueryShardContext;
 import org.opensearch.search.lookup.SearchLookup;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -83,7 +82,7 @@ public class StarTreeMapper extends ParametrizedFieldMapper {
                     );
                 }
                 paramMap.remove(MAX_LEAF_DOCS);
-                List<String> skipStarInDims = Arrays.asList(
+                Set<String> skipStarInDims = Set.of(
                     XContentMapValues.nodeStringArrayValue(paramMap.getOrDefault(SKIP_STAR_NODE_IN_DIMS, new ArrayList<String>()))
                 );
                 paramMap.remove(SKIP_STAR_NODE_IN_DIMS);
