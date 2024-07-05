@@ -23,7 +23,6 @@ import java.util.Map;
  *
  * @opensearch.experimental
  */
-@ExperimentalApi
 public class StarTreeBuilderUtils {
 
     private StarTreeBuilderUtils() {}
@@ -34,6 +33,7 @@ public class StarTreeBuilderUtils {
      * Represents a node in a tree data structure, specifically designed for a star-tree implementation.
      * A star-tree node will represent both star and non-star nodes.
      */
+    @ExperimentalApi
     public static class TreeNode {
 
         /**
