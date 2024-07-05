@@ -46,6 +46,9 @@ public interface StarTreeNode {
     /** Return true if the node is a leaf node, false otherwise. */
     boolean isLeaf();
 
+    /** Return true if the node is a star node, false otherwise. */
+    boolean isStarNode() throws IOException;
+
     /**
      * Get the child node corresponding to the given dimension value (dictionary id), or null if such
      * child does not exist.
