@@ -8,7 +8,6 @@
 
 package org.opensearch.index.compositeindex.datacube.startree.aggregators.numerictype;
 
-import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.index.fielddata.IndexNumericFieldData;
 
 import java.util.function.Function;

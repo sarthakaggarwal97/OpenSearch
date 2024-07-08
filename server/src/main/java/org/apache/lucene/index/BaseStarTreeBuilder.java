@@ -8,11 +8,13 @@
 package org.apache.lucene.index;
 
 import java.time.temporal.ChronoField;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.util.Accountable;
 import org.opensearch.common.time.DateUtils;
+import org.apache.lucene.store.IndexOutput;
 import org.opensearch.index.compositeindex.datacube.Dimension;
 import org.opensearch.index.compositeindex.datacube.Metric;
 import org.opensearch.index.compositeindex.datacube.MetricStat;
@@ -64,18 +66,30 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
     protected final StarTreeBuilderUtils.TreeNode rootNode = getNewNode();
     protected final StarTreeField starTreeField;
     private final MapperService mapperService;
-    private final SegmentWriteState state;
+    private final SegmentWriteState writeState;
+
+    private final IndexOutput metaOut;
+    private final IndexOutput dataOut;
 
     /**
      * Builds star tree based on star tree field configuration consisting of dimensions, metrics and star tree index specific configuration.
      *
-     * @param starTreeField    holds the configuration for the star tree
-     * @param state            stores the segment write state
-     * @param mapperService    helps to find the original type of the field
+     * @param starTreeField holds the configuration for the star tree
+     * @param writeState    stores the segment write writeState
+     * @param mapperService helps to find the original type of the field
      */
-    protected BaseStarTreeBuilder(StarTreeField starTreeField, SegmentWriteState state, MapperService mapperService) throws IOException {
+    protected BaseStarTreeBuilder(
+        IndexOutput metaOut,
+        IndexOutput dataOut,
+        StarTreeField starTreeField,
+        SegmentWriteState writeState,
+        MapperService mapperService
+    ) throws IOException {
 
         logger.info("Building star tree : {} maxLeaf docs : {}", starTreeField, starTreeField.getStarTreeConfig().maxLeafDocs());
+
+        this.metaOut = metaOut;
+        this.dataOut = dataOut;
 
         this.starTreeField = starTreeField;
         StarTreeFieldConfiguration starTreeFieldSpec = starTreeField.getStarTreeConfig();
@@ -84,9 +98,9 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
         this.numDimensions = dimensionsSplitOrder.size();
 
         this.skipStarNodeCreationForDimensions = new HashSet<>();
-        this.totalSegmentDocs = state.segmentInfo.maxDoc();
+        this.totalSegmentDocs = writeState.segmentInfo.maxDoc();
         this.mapperService = mapperService;
-        this.state = state;
+        this.writeState = writeState;
 
         Set<String> skipStarNodeCreationForDimensions = starTreeFieldSpec.getSkipStarNodeCreationInDims();
 
@@ -138,20 +152,15 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
      */
     public List<SequentialDocValuesIterator> getMetricReaders(SegmentWriteState state, Map<String, DocValuesProducer> fieldProducerMap)
         throws IOException {
+
         List<SequentialDocValuesIterator> metricReaders = new ArrayList<>();
         for (Metric metric : this.starTreeField.getMetrics()) {
             for (MetricStat metricType : metric.getMetrics()) {
-                SequentialDocValuesIterator metricReader = null;
-
+                SequentialDocValuesIterator metricReader;
                 FieldInfo metricFieldInfo = state.fieldInfos.fieldInfo(metric.getField());
-                // TODO
-                // if (metricType != MetricStat.COUNT) {
-                // Need not initialize the metric reader for COUNT metric type
                 metricReader = new SequentialDocValuesIterator(
                     fieldProducerMap.get(metricFieldInfo.name).getSortedNumeric(metricFieldInfo)
                 );
-                // }
-
                 metricReaders.add(metricReader);
             }
         }
@@ -162,19 +171,18 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
      * Builds the star tree from the original segment documents
      *
      * @param fieldProducerMap contain s the docValues producer to get docValues associated with each field
-     *
      * @throws IOException when we are unable to build star-tree
      */
     public void build(Map<String, DocValuesProducer> fieldProducerMap) throws IOException {
         long startTime = System.currentTimeMillis();
         //logger.info("Star-tree build is a go with star tree field {}", starTreeField.getName());
 
-        List<SequentialDocValuesIterator> metricReaders = getMetricReaders(state, fieldProducerMap);
+        List<SequentialDocValuesIterator> metricReaders = getMetricReaders(writeState, fieldProducerMap);
         List<Dimension> dimensionsSplitOrder = starTreeField.getDimensionsOrder();
         SequentialDocValuesIterator[] dimensionReaders = new SequentialDocValuesIterator[dimensionsSplitOrder.size()];
         for (int i = 0; i < numDimensions; i++) {
             String dimension = dimensionsSplitOrder.get(i).getField();
-            FieldInfo dimensionFieldInfo = state.fieldInfos.fieldInfo(dimension);
+            FieldInfo dimensionFieldInfo = writeState.fieldInfos.fieldInfo(dimension);
             dimensionReaders[i] = new SequentialDocValuesIterator(
                 fieldProducerMap.get(dimensionFieldInfo.name).getSortedNumeric(dimensionFieldInfo)
             );
@@ -206,8 +214,8 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
         //logger.info("Generated star tree docs : [{}] from segment docs : [{}]", numStarTreeDocument, numSegmentStarTreeDocument);
 
         if (numStarTreeDocs == 0) {
-            // TODO: Uncomment when segment codec is ready
-            // StarTreeBuilderUtils.serializeTree(indexOutput, rootNode, dimensionsSplitOrder, numNodes);
+            // serialize the star tree data
+            serializeStarTree(numSegmentStarTreeDocument);
             return;
         }
 
@@ -226,7 +234,9 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
 
         // TODO: When StarTree Codec is ready
         // Create doc values indices in disk
-        // Serialize and save in disk
+
+        serializeStarTree(numSegmentStarTreeDocument);
+
         // Write star tree metadata for off heap implementation
     }
 
@@ -257,6 +267,23 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
             default:
                 return val;
         }
+    }
+
+    private void serializeStarTree(int numSegmentStarTreeDocument) throws IOException {
+        // serialize the star tree data
+        long dataFilePointer = dataOut.getFilePointer();
+        long totalStarTreeDataLength = StarTreeBuilderUtils.serializeStarTree(dataOut, rootNode, numStarTreeNodes);
+
+        // serialize the star tree meta
+        StarTreeBuilderUtils.serializeStarTreeMetadata(
+            metaOut,
+            starTreeField,
+            writeState,
+            metricAggregatorInfos,
+            numSegmentStarTreeDocument,
+            dataFilePointer,
+            totalStarTreeDataLength
+        );
     }
 
     /**
@@ -296,9 +323,9 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
      * Sorts and aggregates all the documents in the segment as per the configuration, and returns a star-tree document iterator for all the
      * aggregated star-tree documents.
      *
-     * @param numDocs number of documents in the given segment
+     * @param numDocs          number of documents in the given segment
      * @param dimensionReaders List of docValues readers to read dimensions from the segment
-     * @param metricReaders List of docValues readers to read metrics from the segment
+     * @param metricReaders    List of docValues readers to read metrics from the segment
      * @return Iterator for the aggregated star-tree document
      */
     public abstract Iterator<StarTreeDocument> sortAndAggregateSegmentDocuments(
