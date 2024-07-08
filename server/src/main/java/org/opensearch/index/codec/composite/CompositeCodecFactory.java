@@ -8,8 +8,6 @@
 
 package org.opensearch.index.codec.composite;
 
-import java.util.HashMap;
-import java.util.Map;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.lucene99.Lucene99Codec;
@@ -23,7 +21,6 @@ import static org.opensearch.index.codec.CodecService.BEST_COMPRESSION_CODEC;
 import static org.opensearch.index.codec.CodecService.DEFAULT_CODEC;
 import static org.opensearch.index.codec.CodecService.LZ4;
 import static org.opensearch.index.codec.CodecService.ZLIB;
-
 
 /**
  * Factory class to return the latest composite codec for all the modes
