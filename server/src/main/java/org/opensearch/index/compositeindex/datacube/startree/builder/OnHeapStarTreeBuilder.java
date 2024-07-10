@@ -150,6 +150,11 @@ public class OnHeapStarTreeBuilder extends BaseStarTreeBuilder {
     }
 
     @Override
+    public StarTreeDocument getStarTreeDocumentForCreatingDocValues(int docId) throws IOException {
+        return starTreeDocuments.get(docId);
+    }
+
+    @Override
     public List<StarTreeDocument> getStarTreeDocuments() {
         return starTreeDocuments;
     }
