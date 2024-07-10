@@ -429,6 +429,9 @@ public abstract class BaseStarTreeBuilder implements StarTreeBuilder, Accountabl
      */
     public abstract StarTreeDocument getStarTreeDocument(int docId) throws IOException;
 
+
+    public abstract StarTreeDocument getStarTreeDocumentForCreatingDocValues(int docId) throws IOException;
+
     /**
      * Retrieves the list of star-tree documents in the star-tree.
      *

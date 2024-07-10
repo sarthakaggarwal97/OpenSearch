@@ -51,7 +51,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.opensearch.common.util.FeatureFlags.STAR_TREE_INDEX;
-import static org.opensearch.index.engine.EngineTestCase.createMapperService;
+import static org.opensearch.test.OpenSearchTestCase.randomFrom;
 
 /**
  * Star tree doc values Lucene tests
@@ -102,7 +102,7 @@ public class StarTreeDocValuesFormatTests extends BaseDocValuesFormatTestCase {
         StarTreeFieldConfiguration config = new StarTreeFieldConfiguration(
             100,
             Collections.emptySet(),
-            StarTreeFieldConfiguration.StarTreeBuildMode.ON_HEAP // TODO : change it
+            randomFrom(StarTreeFieldConfiguration.StarTreeBuildMode.OFF_HEAP, StarTreeFieldConfiguration.StarTreeBuildMode.ON_HEAP) // TODO : change it
         );
 
         return new StarTreeField("starTree", dims, metrics, config);
