@@ -28,10 +28,16 @@ public class StarTreeValues implements CompositeIndexValues {
     private final Map<String, DocIdSetIterator> dimensionDocValuesIteratorMap;
     private final Map<String, DocIdSetIterator> metricDocValuesIteratorMap;
 
-    // TODO : come up with full set of vales such as dimensions and metrics doc values + star tree
-    public StarTreeValues(List<String> dimensionsOrder) {
-        super();
-        this.dimensionsOrder = List.copyOf(dimensionsOrder);
+    public StarTreeValues(
+        StarTreeField starTreeField,
+        StarTreeNode root,
+        Map<String, DocIdSetIterator> dimensionDocValuesIteratorMap,
+        Map<String, DocIdSetIterator> metricDocValuesIteratorMap
+    ) {
+        this.starTreeField = starTreeField;
+        this.root = root;
+        this.dimensionDocValuesIteratorMap = dimensionDocValuesIteratorMap;
+        this.metricDocValuesIteratorMap = metricDocValuesIteratorMap;
     }
 
     @Override
